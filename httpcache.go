@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chinawebeye/glog"
 )
 
 const (
@@ -25,6 +27,9 @@ const (
 	transparent
 	// XFromCache is the header added to responses that are returned from the cache
 	XFromCache = "X-From-Cache"
+)
+const (
+	logVNum glog.Level = 2 //set glog V level
 )
 
 // A Cache interface is used by the Transport to store and retrieve responses.
@@ -66,6 +71,10 @@ func (c *MemoryCache) Get(key string) (resp []byte, ok bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	resp, ok = c.items[key]
+	if ok {
+		glog.V(logVNum).Infof("Cache.Get key = %v", key)
+	}
+
 	return resp, ok
 }
 
@@ -74,6 +83,7 @@ func (c *MemoryCache) Set(key string, resp []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items[key] = resp
+	glog.V(logVNum).Infof("Cache.Set key = %v", key)
 }
 
 // Delete removes key from the cache
@@ -81,6 +91,7 @@ func (c *MemoryCache) Delete(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.items, key)
+	glog.V(logVNum).Infof("Cache.Delete key = %v", key)
 }
 
 // NewMemoryCache returns a new Cache that will store items in an in-memory map
@@ -152,9 +163,11 @@ func varyMatches(cachedResp *http.Response, req *http.Request) bool {
 	for _, header := range headerAllCommaSepValues(cachedResp.Header, "vary") {
 		header = http.CanonicalHeaderKey(header)
 		if header != "" && req.Header.Get(header) != cachedResp.Header.Get("X-Varied-"+header) {
+			glog.V(logVNum).Infof("varyMatches  false header = %v", header)
 			return false
 		}
 	}
+	glog.V(logVNum).Infof("varyMatches  true")
 	return true
 }
 
@@ -212,6 +225,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		if varyMatches(cachedResp, req) {
 			// Can only use cached value if the new request doesn't Vary significantly
 			freshness := getFreshness(cachedResp.Header, req.Header)
+			glog.V(logVNum).Infof("getFreshness freshness = %v", freshness)
 			if freshness == fresh {
 				return cachedResp, nil
 			}
@@ -223,6 +237,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 				if etag != "" && req.Header.Get("etag") == "" {
 					req2 = cloneRequest(req)
 					req2.Header.Set("if-none-match", etag)
+					//glog.V(logVNum).Infof("Header.Set if-none-match : %v", etag)
 				}
 				lastModified := cachedResp.Header.Get("last-modified")
 				if lastModified != "" && req.Header.Get("last-modified") == "" {
@@ -230,12 +245,14 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 						req2 = cloneRequest(req)
 					}
 					req2.Header.Set("if-modified-since", lastModified)
+					//glog.V(logVNum).Infof("Header.Set if-modified-since : %v", lastModified)
 				}
 				if req2 != nil {
 					// Associate original request with cloned request so we can refer to
 					// it in CancelRequest()
-					t.setModReq(req, req2)
+					//t.setModReq(req, req2) john close 2015.11.4
 					req = req2
+					/* john close 2015.11.4 b
 					defer func() {
 						// Release req/clone mapping on error
 						if err != nil {
@@ -249,12 +266,17 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 							}
 						}
 					}()
+					john close 2015.11.4 e */
 				}
 			}
 		}
 
 		resp, err = transport.RoundTrip(req)
+		glog.V(logVNum+1).Infof("transport.RoundTrip err = %v, resp = %v", err, resp)
+
 		if err == nil && req.Method == "GET" && resp.StatusCode == http.StatusNotModified {
+			return resp, nil
+
 			// Replace the 304 response with the one from cache, but update with some new headers
 			endToEndHeaders := getEndToEndHeaders(resp.Header)
 			for _, header := range endToEndHeaders {
@@ -262,7 +284,6 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 			}
 			cachedResp.Status = fmt.Sprintf("%d %s", http.StatusOK, http.StatusText(http.StatusOK))
 			cachedResp.StatusCode = http.StatusOK
-
 			resp = cachedResp
 		} else if (err != nil || (cachedResp != nil && resp.StatusCode >= 500)) &&
 			req.Method == "GET" && canStaleOnError(cachedResp.Header, req.Header) {
@@ -276,6 +297,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 				t.Cache.Delete(cacheKey)
 			}
 			if err != nil {
+				glog.Errorf("err = %v", err)
 				return nil, err
 			}
 		}
@@ -286,6 +308,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		} else {
 			resp, err = transport.RoundTrip(req)
 			if err != nil {
+				glog.Errorf("transport.RoundTrip err = %v", err)
 				return nil, err
 			}
 		}
@@ -294,6 +317,8 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 	reqCacheControl := parseCacheControl(req.Header)
 	respCacheControl := parseCacheControl(resp.Header)
 
+	glog.V(logVNum+1).Infof("url = %v, reqCacheControl = %v, respCacheControl = %v", req.URL.String(), reqCacheControl, respCacheControl)
+
 	if canStore(reqCacheControl, respCacheControl) {
 		for _, varyKey := range headerAllCommaSepValues(resp.Header, "vary") {
 			varyKey = http.CanonicalHeaderKey(varyKey)
@@ -301,6 +326,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 			reqValue := req.Header.Get(varyKey)
 			if reqValue != "" {
 				resp.Header.Set(fakeHeader, reqValue)
+				glog.V(logVNum).Infof("Header.Set fakeHeader = %v, reqValue = %v", fakeHeader, reqValue)
 			}
 		}
 		respBytes, err := httputil.DumpResponse(resp, true)
@@ -544,6 +570,7 @@ func newGatewayTimeoutResponse(req *http.Request) *http.Response {
 	if err != nil {
 		panic(err)
 	}
+	glog.V(logVNum).Infof("newGatewayTimeoutResponse 504")
 	return resp
 }
 
@@ -597,6 +624,7 @@ func headerAllCommaSepValues(headers http.Header, name string) []string {
 		}
 		vals = append(vals, fields...)
 	}
+	//glog.V(logVNum).Infof("headerAllCommaSepValues vals = %v", vals)
 	return vals
 }
 
