@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -123,8 +122,11 @@ func (r *onEOFReader) runFunc() {
 type Transport struct {
 	// The RoundTripper interface actually used to make requests
 	// If nil, http.DefaultTransport is used
-	Transport http.RoundTripper
-	Cache     Cache
+
+	//Transport http.RoundTripper
+	Transport *http.Transport //john change 2015.11.3
+
+	Cache Cache
 	// If true, responses returned from the cache will be given an extra header, X-From-Cache
 	MarkCachedResponses bool
 	// guards modReq
@@ -191,7 +193,15 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 
 	transport := t.Transport
 	if transport == nil {
-		transport = http.DefaultTransport
+		//john change 2015.11.3
+		if true {
+			var ok bool
+			if transport, ok = http.DefaultTransport.(*http.Transport); !ok {
+				return nil, err
+			}
+		} else {
+			//transport = http.DefaultTransport
+		}
 	}
 
 	if cachedResp != nil && err == nil && cacheableMethod && req.Header.Get("range") == "" {
@@ -303,6 +313,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 	return resp, nil
 }
 
+/*
 // CancelRequest calls CancelRequest on the underlaying transport if implemented or
 // throw a warning otherwise.
 func (t *Transport) CancelRequest(req *http.Request) {
@@ -327,7 +338,7 @@ func (t *Transport) CancelRequest(req *http.Request) {
 		tr.CancelRequest(req)
 	}
 }
-
+*/
 // ErrNoDateHeader indicates that the HTTP headers contained no Date header.
 var ErrNoDateHeader = errors.New("no Date header")
 

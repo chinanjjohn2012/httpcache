@@ -117,6 +117,7 @@ func (s *S) TearDownTest(c *C) {
 }
 
 func (s *S) TestGetOnlyIfCachedHit(c *C) {
+	fmt.Printf("TestGetOnlyIfCachedHit \n")
 	req, err := http.NewRequest("GET", s.server.URL, nil)
 	c.Assert(err, IsNil)
 	resp, err := s.client.Do(req)
@@ -133,6 +134,7 @@ func (s *S) TestGetOnlyIfCachedHit(c *C) {
 }
 
 func (s *S) TestGetOnlyIfCachedMiss(c *C) {
+	fmt.Printf("TestGetOnlyIfCachedMiss \n")
 	req, err := http.NewRequest("GET", s.server.URL, nil)
 	req.Header.Add("cache-control", "only-if-cached")
 	resp, err := s.client.Do(req)
@@ -143,6 +145,7 @@ func (s *S) TestGetOnlyIfCachedMiss(c *C) {
 }
 
 func (s *S) TestGetNoStoreRequest(c *C) {
+	fmt.Printf("TestGetNoStoreRequest \n")
 	req, err := http.NewRequest("GET", s.server.URL, nil)
 	req.Header.Add("Cache-Control", "no-store")
 	resp, err := s.client.Do(req)
@@ -157,6 +160,7 @@ func (s *S) TestGetNoStoreRequest(c *C) {
 }
 
 func (s *S) TestGetNoStoreResponse(c *C) {
+	fmt.Printf("TestGetNoStoreResponse \n")
 	req, err := http.NewRequest("GET", s.server.URL+"/nostore", nil)
 	resp, err := s.client.Do(req)
 	defer resp.Body.Close()
@@ -170,6 +174,7 @@ func (s *S) TestGetNoStoreResponse(c *C) {
 }
 
 func (s *S) TestGetWithEtag(c *C) {
+	fmt.Printf("TestGetWithEtag \n")
 	req, err := http.NewRequest("GET", s.server.URL+"/etag", nil)
 	resp, err := s.client.Do(req)
 	defer resp.Body.Close()
@@ -188,6 +193,7 @@ func (s *S) TestGetWithEtag(c *C) {
 }
 
 func (s *S) TestGetWithLastModified(c *C) {
+	fmt.Printf("TestGetWithLastModified \n")
 	req, err := http.NewRequest("GET", s.server.URL+"/lastmodified", nil)
 	resp, err := s.client.Do(req)
 	defer resp.Body.Close()
@@ -201,6 +207,7 @@ func (s *S) TestGetWithLastModified(c *C) {
 }
 
 func (s *S) TestGetWithVary(c *C) {
+	fmt.Printf("TestGetWithVary \n")
 	req, err := http.NewRequest("GET", s.server.URL+"/varyaccept", nil)
 	req.Header.Set("Accept", "text/plain")
 	resp, err := s.client.Do(req)
@@ -227,6 +234,7 @@ func (s *S) TestGetWithVary(c *C) {
 }
 
 func (s *S) TestGetWithDoubleVary(c *C) {
+	fmt.Printf("TestGetWithDoubleVary \n")
 	req, err := http.NewRequest("GET", s.server.URL+"/doublevary", nil)
 	req.Header.Set("Accept", "text/plain")
 	req.Header.Set("Accept-Language", "da, en-gb;q=0.8, en;q=0.7")
@@ -254,6 +262,7 @@ func (s *S) TestGetWithDoubleVary(c *C) {
 }
 
 func (s *S) TestGetWith2VaryHeaders(c *C) {
+	fmt.Printf("TestGetWith2VaryHeaders \n")
 	// Tests that multiple Vary headers' comma-separated lists are
 	// merged. See https://github.com/gregjones/httpcache/issues/27.
 	const (
@@ -305,6 +314,7 @@ func (s *S) TestGetWith2VaryHeaders(c *C) {
 }
 
 func (s *S) TestGetVaryUnused(c *C) {
+	fmt.Printf("TestGetVaryUnused \n")
 	req, err := http.NewRequest("GET", s.server.URL+"/varyunused", nil)
 	req.Header.Set("Accept", "text/plain")
 	resp, err := s.client.Do(req)
@@ -319,6 +329,7 @@ func (s *S) TestGetVaryUnused(c *C) {
 }
 
 func (s *S) TestUpdateFields(c *C) {
+	fmt.Printf("TestUpdateFields \n")
 	req, err := http.NewRequest("GET", s.server.URL+"/updatefields", nil)
 	resp, err := s.client.Do(req)
 	defer resp.Body.Close()
@@ -335,6 +346,7 @@ func (s *S) TestUpdateFields(c *C) {
 }
 
 func (s *S) TestParseCacheControl(c *C) {
+	fmt.Printf("TestParseCacheControl \n")
 	h := http.Header{}
 	for _ = range parseCacheControl(h) {
 		c.Fatal("cacheControl should be empty")
@@ -356,6 +368,7 @@ func (s *S) TestParseCacheControl(c *C) {
 }
 
 func (s *S) TestNoCacheRequestExpiration(c *C) {
+	fmt.Printf("TestNoCacheRequestExpiration \n")
 	respHeaders := http.Header{}
 	respHeaders.Set("Cache-Control", "max-age=7200")
 	reqHeaders := http.Header{}
@@ -365,6 +378,7 @@ func (s *S) TestNoCacheRequestExpiration(c *C) {
 }
 
 func (s *S) TestNoCacheResponseExpiration(c *C) {
+	fmt.Printf("TestNoCacheResponseExpiration \n")
 	respHeaders := http.Header{}
 	respHeaders.Set("Cache-Control", "no-cache")
 	respHeaders.Set("Expires", "Wed, 19 Apr 3000 11:43:00 GMT")
@@ -374,6 +388,7 @@ func (s *S) TestNoCacheResponseExpiration(c *C) {
 }
 
 func (s *S) TestReqMustRevalidate(c *C) {
+	fmt.Printf("TestReqMustRevalidate \n")
 	// not paying attention to request setting max-stale means never returning stale
 	// responses, so always acting as if must-revalidate is set
 	respHeaders := http.Header{}
@@ -384,6 +399,7 @@ func (s *S) TestReqMustRevalidate(c *C) {
 }
 
 func (s *S) TestRespMustRevalidate(c *C) {
+	fmt.Printf("TestRespMustRevalidate \n")
 	respHeaders := http.Header{}
 	respHeaders.Set("Cache-Control", "must-revalidate")
 	reqHeaders := http.Header{}
@@ -392,6 +408,7 @@ func (s *S) TestRespMustRevalidate(c *C) {
 }
 
 func (s *S) TestFreshExpiration(c *C) {
+	fmt.Printf("TestFreshExpiration \n")
 	now := time.Now()
 	respHeaders := http.Header{}
 	respHeaders.Set("date", now.Format(time.RFC1123))
@@ -405,6 +422,7 @@ func (s *S) TestFreshExpiration(c *C) {
 }
 
 func (s *S) TestMaxAge(c *C) {
+	fmt.Printf("TestMaxAge \n")
 	now := time.Now()
 	respHeaders := http.Header{}
 	respHeaders.Set("date", now.Format(time.RFC1123))
@@ -418,6 +436,7 @@ func (s *S) TestMaxAge(c *C) {
 }
 
 func (s *S) TestMaxAgeZero(c *C) {
+	fmt.Printf("TestMaxAgeZero \n")
 	now := time.Now()
 	respHeaders := http.Header{}
 	respHeaders.Set("date", now.Format(time.RFC1123))
@@ -428,6 +447,7 @@ func (s *S) TestMaxAgeZero(c *C) {
 }
 
 func (s *S) TestBothMaxAge(c *C) {
+	fmt.Printf("TestBothMaxAge \n")
 	now := time.Now()
 	respHeaders := http.Header{}
 	respHeaders.Set("date", now.Format(time.RFC1123))
@@ -439,6 +459,7 @@ func (s *S) TestBothMaxAge(c *C) {
 }
 
 func (s *S) TestMinFreshWithExpires(c *C) {
+	fmt.Printf("TestMinFreshWithExpires \n")
 	now := time.Now()
 	respHeaders := http.Header{}
 	respHeaders.Set("date", now.Format(time.RFC1123))
@@ -454,6 +475,7 @@ func (s *S) TestMinFreshWithExpires(c *C) {
 }
 
 func (s *S) TestEmptyMaxStale(c *C) {
+	fmt.Printf("TestEmptyMaxStale \n")
 	now := time.Now()
 	respHeaders := http.Header{}
 	respHeaders.Set("date", now.Format(time.RFC1123))
@@ -472,6 +494,7 @@ func (s *S) TestEmptyMaxStale(c *C) {
 }
 
 func (s *S) TestMaxStaleValue(c *C) {
+	fmt.Printf("TestMaxStaleValue \n")
 	now := time.Now()
 	respHeaders := http.Header{}
 	respHeaders.Set("date", now.Format(time.RFC1123))
@@ -520,6 +543,7 @@ func (c *containsHeaderChecker) Check(params []interface{}, names []string) (boo
 var ContainsHeader Checker = &containsHeaderChecker{&CheckerInfo{Name: "Contains", Params: []string{"Container", "expected to contain"}}}
 
 func (s *S) TestGetEndToEndHeaders(c *C) {
+	fmt.Printf("TestGetEndToEndHeaders \n")
 	var (
 		headers http.Header
 		end2end []string
@@ -562,6 +586,7 @@ func (t transportMock) RoundTrip(req *http.Request) (resp *http.Response, err er
 }
 
 func (s *S) TestStaleIfErrorRequest(c *C) {
+	fmt.Printf("TestStaleIfErrorRequest \n")
 	now := time.Now()
 	tmock := transportMock{
 		response: &http.Response{
@@ -592,6 +617,7 @@ func (s *S) TestStaleIfErrorRequest(c *C) {
 }
 
 func (s *S) TestStaleIfErrorRequestLifetime(c *C) {
+	fmt.Printf("TestStaleIfErrorRequestLifetime \n")
 	now := time.Now()
 	tmock := transportMock{
 		response: &http.Response{
@@ -634,6 +660,7 @@ func (s *S) TestStaleIfErrorRequestLifetime(c *C) {
 }
 
 func (s *S) TestStaleIfErrorResponse(c *C) {
+	fmt.Printf("TestStaleIfErrorResponse \n")
 	now := time.Now()
 	tmock := transportMock{
 		response: &http.Response{
@@ -663,6 +690,7 @@ func (s *S) TestStaleIfErrorResponse(c *C) {
 }
 
 func (s *S) TestStaleIfErrorResponseLifetime(c *C) {
+	fmt.Printf("TestStaleIfErrorResponseLifetime \n")
 	now := time.Now()
 	tmock := transportMock{
 		response: &http.Response{
