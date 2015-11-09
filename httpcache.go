@@ -12,12 +12,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/chinanjjohn2012/httpcache/diskcache"
+	"github.com/chinanjjohn2012/httpcache/leveldbcache"
+	"github.com/chinanjjohn2012/httpcache/lrucache"
+	"github.com/chinanjjohn2012/httpcache/memcache"
 	"github.com/chinawebeye/glog"
 )
 
@@ -326,7 +332,7 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 			reqValue := req.Header.Get(varyKey)
 			if reqValue != "" {
 				resp.Header.Set(fakeHeader, reqValue)
-				glog.V(logVNum).Infof("Header.Set fakeHeader = %v, reqValue = %v", fakeHeader, reqValue)
+				//glog.V(logVNum).Infof("Header.Set fakeHeader = %v, reqValue = %v", fakeHeader, reqValue)
 			}
 		}
 		respBytes, err := httputil.DumpResponse(resp, true)
@@ -631,6 +637,48 @@ func headerAllCommaSepValues(headers http.Header, name string) []string {
 // NewMemoryCacheTransport returns a new Transport using the in-memory cache implementation
 func NewMemoryCacheTransport() *Transport {
 	c := NewMemoryCache()
+	t := NewTransport(c)
+	return t
+}
+
+func NewDiskCacheTransport() *Transport {
+	tempDir, err := ioutil.TempDir("", "httpdiskcache")
+	if err != nil {
+		glog.Errorf("TempDir err = %v", err)
+		return nil
+	}
+	glog.Infof("NewDiskCacheTransport tempDir = %v", tempDir)
+	c := diskcache.New(tempDir)
+	t := NewTransport(c)
+	return t
+}
+
+func NewLeveldbCacheTransport() *Transport {
+	tempDir, err := ioutil.TempDir("", "httpleveldbcache")
+	if err != nil {
+		glog.Errorf("TempDir err = %v", err)
+		return nil
+	}
+	glog.Infof("NewLeveldbCacheTransport tempDir = %v", tempDir)
+	c, err := leveldbcache.New(fmt.Sprintf("%s%c%s", tempDir, os.PathSeparator, "db"))
+	if err != nil {
+		glog.Errorf("New err = %v", err)
+		return nil
+	}
+	t := NewTransport(c)
+	return t
+}
+
+func NewMemCacheTransport(server []string) *Transport {
+
+	c := memcache.New(server...)
+
+	t := NewTransport(c)
+	return t
+}
+
+func NewLruCacheTransport(capacity uint) *Transport {
+	c := lrucache.New(capacity)
 	t := NewTransport(c)
 	return t
 }
