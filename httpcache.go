@@ -35,7 +35,8 @@ const (
 	XFromCache = "X-From-Cache"
 )
 const (
-	logVNum glog.Level = 2 //set glog V level
+	logVNum    glog.Level = 2 //set glog V level
+	TimeFormat            = "Mon, 02 Jan 2006 15:04:05 GMT"
 )
 
 // A Cache interface is used by the Transport to store and retrieve responses.
@@ -173,7 +174,7 @@ func varyMatches(cachedResp *http.Response, req *http.Request) bool {
 			return false
 		}
 	}
-	glog.V(logVNum).Infof("varyMatches  true")
+	//glog.V(logVNum).Infof("varyMatches  true")
 	return true
 }
 
@@ -231,27 +232,58 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		if varyMatches(cachedResp, req) {
 			// Can only use cached value if the new request doesn't Vary significantly
 			freshness := getFreshness(cachedResp.Header, req.Header)
-			glog.V(logVNum).Infof("getFreshness freshness = %v", freshness)
 			if freshness == fresh {
+				glog.V(logVNum).Infof("fresh url = %v", req.URL.String())
 				return cachedResp, nil
 			}
 
 			if freshness == stale {
 				var req2 *http.Request
 				// Add validators if caller hasn't already done so
+				//glog.V(logVNum).Infof("stale url = %v", req.URL.String())
+
 				etag := cachedResp.Header.Get("etag")
-				if etag != "" && req.Header.Get("etag") == "" {
-					req2 = cloneRequest(req)
-					req2.Header.Set("if-none-match", etag)
-					//glog.V(logVNum).Infof("Header.Set if-none-match : %v", etag)
-				}
-				lastModified := cachedResp.Header.Get("last-modified")
-				if lastModified != "" && req.Header.Get("last-modified") == "" {
-					if req2 == nil {
-						req2 = cloneRequest(req)
+				if etag != "" {
+					reqEtag := req.Header.Get("etag")
+					if etag == reqEtag {
+						return RespNotModified(cachedResp, req)
 					}
-					req2.Header.Set("if-modified-since", lastModified)
-					//glog.V(logVNum).Infof("Header.Set if-modified-since : %v", lastModified)
+
+					reqIfNoneMatch := req.Header.Get("if-none-match")
+					if etag == reqIfNoneMatch {
+						return RespNotModified(cachedResp, req)
+					}
+
+					if reqEtag == "" && reqIfNoneMatch == "" {
+						req2 = cloneRequest(req)
+						req2.Header.Set("if-none-match", etag)
+						glog.V(logVNum).Infof("Header.Set if-none-match : %v", etag)
+					}
+				}
+
+				lastModified := cachedResp.Header.Get("last-modified")
+				if lastModified != "" {
+					reqLastModified := req.Header.Get("last-modified")
+					if result, err := headerTimeCmp(lastModified, reqLastModified); err == nil {
+						if result >= 0 {
+							return RespNotModified(cachedResp, req)
+						}
+					}
+
+					reqIfModifiedSince := req.Header.Get("if-modified-since")
+					if result, err := headerTimeCmp(lastModified, reqIfModifiedSince); err == nil {
+						if result >= 0 {
+							return RespNotModified(cachedResp, req)
+						}
+					}
+
+					if reqLastModified == "" && reqIfModifiedSince == "" {
+						if req2 == nil {
+							req2 = cloneRequest(req)
+						}
+						req2.Header.Set("if-modified-since", lastModified)
+						glog.V(logVNum).Infof("Header.Set if-modified-since : %v", lastModified)
+					}
 				}
 				if req2 != nil {
 					// Associate original request with cloned request so we can refer to
@@ -278,13 +310,14 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		}
 
 		resp, err = transport.RoundTrip(req)
-		glog.V(logVNum+1).Infof("transport.RoundTrip err = %v, resp = %v", err, resp)
+		glog.V(logVNum).Infof("transport.RoundTrip url = %v", req.URL.String())
 
 		if err == nil && req.Method == "GET" && resp.StatusCode == http.StatusNotModified {
 			return resp, nil
 
 			// Replace the 304 response with the one from cache, but update with some new headers
 			endToEndHeaders := getEndToEndHeaders(resp.Header)
+			glog.V(logVNum).Infof("endToEndHeaders = %v", endToEndHeaders)
 			for _, header := range endToEndHeaders {
 				cachedResp.Header[header] = resp.Header[header]
 			}
@@ -410,17 +443,21 @@ func getFreshness(respHeaders, reqHeaders http.Header) (freshness int) {
 	respCacheControl := parseCacheControl(respHeaders)
 	reqCacheControl := parseCacheControl(reqHeaders)
 	if _, ok := reqCacheControl["no-cache"]; ok {
+		glog.V(logVNum).Infof("transparent req no-cache")
 		return transparent
 	}
 	if _, ok := respCacheControl["no-cache"]; ok {
+		glog.V(logVNum).Infof("stale resp no-cache")
 		return stale
 	}
 	if _, ok := reqCacheControl["only-if-cached"]; ok {
+		//glog.V(logVNum).Infof("fresh req only-if-cached")
 		return fresh
 	}
 
 	date, err := Date(respHeaders)
 	if err != nil {
+		glog.V(logVNum).Infof("stale resp Date err = %v", err)
 		return stale
 	}
 	currentAge := clock.since(date)
@@ -433,6 +470,7 @@ func getFreshness(respHeaders, reqHeaders http.Header) (freshness int) {
 	if maxAge, ok := respCacheControl["max-age"]; ok {
 		lifetime, err = time.ParseDuration(maxAge + "s")
 		if err != nil {
+			glog.V(logVNum).Infof("resp max-age err = %v", err)
 			lifetime = zeroDuration
 		}
 	} else {
@@ -440,17 +478,20 @@ func getFreshness(respHeaders, reqHeaders http.Header) (freshness int) {
 		if expiresHeader != "" {
 			expires, err := time.Parse(time.RFC1123, expiresHeader)
 			if err != nil {
+				glog.V(logVNum).Infof("resp Expires err = %v", err)
 				lifetime = zeroDuration
 			} else {
 				lifetime = expires.Sub(date)
 			}
 		}
 	}
+	glog.V(logVNum+1).Infof("resp lifetime = %v, currentAge = %v", lifetime, currentAge)
 
 	if maxAge, ok := reqCacheControl["max-age"]; ok {
 		// the client is willing to accept a response whose age is no greater than the specified time in seconds
 		lifetime, err = time.ParseDuration(maxAge + "s")
 		if err != nil {
+			glog.V(logVNum).Infof("req max-age err = %v", err)
 			lifetime = zeroDuration
 		}
 	}
@@ -459,6 +500,7 @@ func getFreshness(respHeaders, reqHeaders http.Header) (freshness int) {
 		minfreshDuration, err := time.ParseDuration(minfresh + "s")
 		if err == nil {
 			currentAge = time.Duration(currentAge + minfreshDuration)
+			glog.V(logVNum).Infof("req min-fresh, currentAge = %v", currentAge)
 		}
 	}
 
@@ -472,15 +514,20 @@ func getFreshness(respHeaders, reqHeaders http.Header) (freshness int) {
 		// but that seems like a  hassle, and is it actually useful? If so, then there needs to be a different
 		// return-value available here.
 		if maxstale == "" {
+			//glog.V(logVNum).Infof("fresh maxstale == \"\"")
 			return fresh
 		}
 		maxstaleDuration, err := time.ParseDuration(maxstale + "s")
 		if err == nil {
 			currentAge = time.Duration(currentAge - maxstaleDuration)
+			glog.V(logVNum).Infof("req max-stale, currentAge = %v", currentAge)
 		}
 	}
 
+	glog.V(logVNum+1).Infof("req lifetime = %v, currentAge = %v", lifetime, currentAge)
+
 	if lifetime > currentAge {
+		//glog.V(logVNum).Infof("fresh %v > %v", lifetime, currentAge)
 		return fresh
 	}
 
@@ -634,6 +681,45 @@ func headerAllCommaSepValues(headers http.Header, name string) []string {
 	return vals
 }
 
+// compare time old
+// time1 == time2 return 0
+// time1 > time2 return 1
+//time1 < time2 return -1
+// if  time1 == "" or time2 == "" return error
+func headerTimeCmp(time1, time2 string) (int, error) {
+	if time1 == "" || time2 == "" {
+		return 0, fmt.Errorf("time1 || time2 empty")
+	}
+
+	t1, err := time.Parse(TimeFormat, time1)
+	if err != nil {
+		if time1 == time2 {
+			return 0, nil
+		} else {
+			glog.V(logVNum).Infof("headerTimeCmp err = %v", err)
+			return 0, err
+		}
+	}
+
+	t2, err := time.Parse(TimeFormat, time2)
+	if err != nil {
+		if time1 == time2 {
+			return 0, nil
+		} else {
+			glog.V(logVNum).Infof("headerTimeCmp err = %v", err)
+			return 0, err
+		}
+	}
+
+	if t1.Equal(t2) {
+		return 0, nil
+	} else if t1.After(t2) {
+		return 1, nil
+	} else {
+		return -1, nil
+	}
+}
+
 // NewMemoryCacheTransport returns a new Transport using the in-memory cache implementation
 func NewMemoryCacheTransport() *Transport {
 	c := NewMemoryCache()
@@ -670,9 +756,7 @@ func NewLeveldbCacheTransport() *Transport {
 }
 
 func NewMemCacheTransport(server []string) *Transport {
-
 	c := memcache.New(server...)
-
 	t := NewTransport(c)
 	return t
 }
@@ -681,4 +765,23 @@ func NewLruCacheTransport(capacity uint) *Transport {
 	c := lrucache.New(capacity)
 	t := NewTransport(c)
 	return t
+}
+
+func RespNotModified(cachedResp *http.Response, req *http.Request) (resp *http.Response, err error) {
+	//glog.V(logVNum).Infof("RespNotModified: resp = %v", cachedResp.Header)
+	//glog.V(logVNum).Infof("RespNotModified: req= %v", req.Header)
+
+	resp = &http.Response{
+		Status:        http.StatusText(http.StatusNotModified),
+		StatusCode:    http.StatusNotModified,
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        cachedResp.Header,
+		Request:       req,
+		Close:         true,
+		ContentLength: -1,
+	}
+	//glog.V(logVNum).Infof("RespNotModified url = %v", req.URL.String())
+	return resp, err
 }
